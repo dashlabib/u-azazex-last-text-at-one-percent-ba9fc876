@@ -8,14 +8,12 @@ The last text a dying phone sends at one percent (122 characters, 24 words): it 
 
 ## How it works
 
-1. `entry_path()` locates `entry.txt` next to `main.py`, wherever the repo is checked out.
-2. `load_raw()` reads that file as raw bytes, so nothing is ever re-encoded or re-wrapped.
-3. `decode()` decodes the bytes as UTF-8 and drops only the file's single trailing line ending for validation; any other leading or trailing space is part of the entry and is rejected.
-4. `load_entry()` returns the raw bytes and the decoded text as one pair, so no caller can validate one file and publish another.
-5. `gate_violations()` composes two checks: `shape_violations()` (the sealed scorer's rules — empty or whitespace-only text, length outside 1–200 characters, embedded line breaks, tabs, control characters) and `voice_violations()` (the line must carry at least one word of the phone's own vocabulary — charger, battery, percent, 100%, delete, goodbye, dying, screen, charge — so a generic battery warning cannot pass as a joke). `validate()` refuses the entry with every violation named.
-6. `resolve_output_dir()` picks the destination — `--output-dir`, else `$MAKEFUN_OUTPUT_DIR`, else `/output` — treating a blank env var as unset.
-7. `publish()` writes the raw bytes to a temporary file in the same directory, reads the staged copy back, and moves it into place with `os.replace` only when the bytes match; it then reads the published file back once more and compares bytes. The published file is therefore byte-identical to `entry.txt`, trailing newline included, and a failed write can never leave a half-written entry behind.
-8. `describe()` summarises the entry as characters, bytes and words for the success messages.
+1. `Entry.load()` reads `entry.txt` next to `main.py`, wherever the repo is checked out, and returns a frozen dataclass pairing the raw bytes with the decoded text, so no caller can validate one file and publish another. Decoding drops only the file's single trailing line ending for validation; any other leading or trailing space is part of the entry and is rejected.
+2. The gate is a registry of small rule functions (`RULES`): `rule_no_edge_space`, `rule_length` (1–200 characters), `rule_single_line`, `rule_no_controls`, and `rule_phone_voice` (the line must carry at least one word of the phone's own vocabulary — charger, battery, percent, 100%, delete, goodbye, dying, screen, charge — so a generic battery warning cannot pass as a joke). Each rule returns one violation message or `None`.
+3. `evaluate()` runs the registry and collects every violation at once — `rule_not_empty` short-circuits it for an empty or whitespace-only entry — and `run()` refuses the entry with all of them named.
+4. `pick_output_dir()` picks the destination — `--output-dir`, else `$MAKEFUN_OUTPUT_DIR`, else `/output`.
+5. `publish()` stages the raw bytes in a temporary file beside the final path, checks the staged copy by SHA-256 (`digest()`), and moves it into place with `os.replace` only when the digest matches; it then reads the published file back and compares it byte for byte and by digest. The published file is therefore byte-identical to `entry.txt`, trailing newline included, and a failed write can never leave a half-written entry behind.
+6. `summary()` reports the entry as characters, bytes and words for the success messages.
 
 Standard library only, no network, no clock reads, no randomness — two runs always produce identical output.
 
